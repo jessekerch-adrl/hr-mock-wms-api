@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Generate static JSON fixtures for the HR mock WMS API."""
-import json, os
+import json, os, random
 
-# itemId -> onHand (seeded for deterministic test outputs)
+# Internal short keys 101..125 map to realistic 6-digit itemIds and
+# "xxx-xxxx-xxx" style item names (a few with /A or /B revs).
+# Internal key -> onHand (seeded for deterministic test outputs).
 ITEMS = {
     101: -10, 102: -5, 103: -1, 104: 0, 105: 0,
     106: 3, 107: 8, 108: 15, 109: 40, 110: 80,
@@ -10,8 +12,22 @@ ITEMS = {
     116: 25, 117: 50, 118: -2, 119: 1, 120: 18,
     121: -6, 122: 0, 123: 7, 124: 30, 125: 100,
 }
-ITEM_NAMES = {i: f"JK-ITEM-{i:04d}" for i in ITEMS}
-SUPPLIERS = ["Grainger", "McMaster-Carr", "Digi-Key", "Mouser", "Fastenal"]
+
+# Deterministic remap: internal key -> public 6-digit itemId + xxx-xxxx-xxx name.
+_rng = random.Random(42)
+_six_digit_pool = _rng.sample(range(100000, 1000000), len(ITEMS))
+ITEM_ID_MAP = dict(zip(sorted(ITEMS.keys()), _six_digit_pool))
+
+def _gen_name():
+    return f"{_rng.randint(100, 999)}-{_rng.randint(1000, 9999)}-{_rng.randint(100, 999)}"
+
+ITEM_NAMES = {k: _gen_name() for k in sorted(ITEMS.keys())}
+# Sprinkle /A or /B revs on a few items.
+for k, rev in [(103, "/A"), (110, "/A"), (117, "/B"), (122, "/A"), (125, "/B")]:
+    ITEM_NAMES[k] += rev
+
+SUPPLIERS = ["Acme Supply Co", "Globex Industrial", "Initech Components",
+             "Hooli Hardware", "Meridian Materials"]
 
 # (id, daysLate, [(itemId, orderedQty, receivedQty), ...])
 POS = [
@@ -74,7 +90,9 @@ for i, page_pos in enumerate(pages, 1):
             "daysLate": dl,
             "status": "OPEN",
             "lines": [{
-                "lineId": j + 1, "itemId": iid, "itemName": ITEM_NAMES[iid],
+                "lineId": j + 1,
+                "itemId": ITEM_ID_MAP[iid],
+                "itemName": ITEM_NAMES[iid],
                 "orderedQty": o, "receivedQty": r,
             } for j, (iid, o, r) in enumerate(lines)],
         } for poid, dl, lines in page_pos],
@@ -84,10 +102,13 @@ for i, page_pos in enumerate(pages, 1):
 
 used_items = sorted({iid for _, _, lines in POS for iid, _, _ in lines})
 for iid in used_items:
-    with open(f"api/inventory/{iid}.json", "w") as f:
+    public_id = ITEM_ID_MAP[iid]
+    with open(f"api/inventory/{public_id}.json", "w") as f:
         json.dump({"data": [{
-            "itemId": iid, "itemName": ITEM_NAMES[iid],
-            "onHand": ITEMS[iid], "orgCode": "US_SA9_TECH",
+            "itemId": public_id,
+            "itemName": ITEM_NAMES[iid],
+            "onHand": ITEMS[iid],
+            "orgCode": "ORG-001",
         }]}, f, indent=2)
 
 print(f"Wrote {len(pages)} PO pages and {len(used_items)} inventory files.")
