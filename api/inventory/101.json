@@ -1,0 +1,10 @@
+{
+  "data": [
+    {
+      "itemId": 101,
+      "itemName": "JK-ITEM-0101",
+      "onHand": -10,
+      "orgCode": "US_SA9_TECH"
+    }
+  ]
+}
